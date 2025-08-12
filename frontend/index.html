@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>Web SSH Terminal</title>
+    
+    <!-- Security Headers -->
+    <!-- NOTE: X-Frame-Options and frame-ancestors CSP cannot be set via meta tags -->
+    <!-- These should be set by the web server as HTTP headers instead -->
+    <!-- 
+    Recommended server headers:
+    X-Frame-Options: DENY
+    X-Content-Type-Options: nosniff
+    Referrer-Policy: no-referrer
+    Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.tailwindcss.com; connect-src 'self' ws: wss:; img-src 'self' data:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';
+    -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="Referrer-Policy" content="no-referrer">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    screens: {
+                        'iphone13': '428px',
+                        'iphone13-landscape': '926px',
+                    },
+                    fontFamily: {
+                        'mono': ['Menlo', 'Monaco', 'Courier New', 'monospace'],
+                    },
+                    colors: {
+                        terminal: {
+                            bg: '#1a1a1a',
+                            text: '#ffffff',
+                            cursor: '#ffffff',
+                            selection: '#3e4451',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- HTMX - SRI temporarily removed for development -->
+    <!-- TODO: Generate correct SRI hashes when deploying to production -->
+    <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js" 
+            crossorigin="anonymous"></script>
+    <!-- HTMX WebSocket Extension -->
+    <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/ws.js"
+            crossorigin="anonymous"></script>
+    
+    <!-- xterm.js - SRI temporarily removed for development -->
+    <!-- TODO: Generate correct SRI hashes when deploying to production -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"
+            crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css"
+          crossorigin="anonymous" />
+    <!-- xterm.js addons -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"
+            crossorigin="anonymous"></script>
+    
+    <!-- PWA Support -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SSH Terminal">
+    <meta name="mobile-web-app-capable" content="yes">
+    
+    <!-- Custom CSS for mobile optimization -->
+    <style>
+        /* Safe area handling */
+        .pt-safe-top { padding-top: env(safe-area-inset-top); }
+        .pb-safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+        .pl-safe-left { padding-left: env(safe-area-inset-left); }
+        .pr-safe-right { padding-right: env(safe-area-inset-right); }
+        
+        /* Hide scrollbars but keep functionality */
+        .terminal-container::-webkit-scrollbar {
+            display: none;
+        }
+        .terminal-container {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        /* Full height without address bar */
+        .full-viewport {
+            height: 100vh;
+            height: 100dvh; /* Dynamic viewport height for mobile */
+        }
+        
+        /* Terminal focus styles */
+        .terminal-container:focus-within {
+            outline: none;
+        }
+        
+        /* Status indicator animation */
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse-slow {
+            animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white font-mono overflow-hidden">
+    <!-- Authentication Screen -->
+    <div id="auth-screen" class="flex items-center justify-center min-h-screen bg-gray-900">
+        <div class="w-full max-w-md p-6">
+            <h1 class="text-2xl font-bold text-white mb-6 text-center">SSH Terminal</h1>
+            
+            <!-- ==========================================
+                 AUTHENTICATION FORM - BACKEND INTEGRATION
+                 ==========================================
+                 This form is ready for real backend integration
+                 
+                 CURRENT STATE (Development):
+                 - Form submits to /validate-key endpoint
+                 - JavaScript intercepts and handles locally (see app.js)
+                 
+                 WHEN IMPLEMENTING REAL API KEYS:
+                 1. Implement POST /validate-key endpoint in backend
+                 2. Remove event.preventDefault() in app.js setupHTMXEventListeners()
+                 3. Backend should return:
+                    - 200 OK for valid API keys (can return empty body)
+                    - 401 Unauthorized for invalid keys
+                    - 400 Bad Request for malformed requests
+                 
+                 EXPECTED BACKEND ENDPOINT:
+                 POST /validate-key
+                 Content-Type: application/x-www-form-urlencoded
+                 Body: api_key=your-key-here
+                 
+                 HTMX will automatically:
+                 - Send form data on submit
+                 - Handle loading states
+                 - Process responses
+                 ========================================== -->
+            <form hx-post="/validate-key" 
+                  hx-target="#main-app" 
+                  hx-swap="outerHTML"
+                  hx-indicator="#auth-spinner">
+                
+                <input type="password" 
+                       name="api_key" 
+                       placeholder="Enter API Key"
+                       class="w-full p-3 bg-gray-800 text-white rounded-lg border border-gray-600 focus:border-blue-500"
+                       autocomplete="off"
+                       maxlength="256"
+                       minlength="8"
+                       pattern="[A-Za-z0-9\-_]+"
+                       title="API key should contain only alphanumeric characters, hyphens, and underscores"
+                       required>
+                
+                <button type="submit" 
+                        class="w-full mt-4 p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    <span class="htmx-indicator" id="auth-spinner">
+                        <svg class="animate-spin h-4 w-4 inline mr-2" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </span>
+                    Connect
+                </button>
+                
+                <div id="auth-error" class="mt-4 text-red-400 text-sm hidden"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Application Container (Hidden by default) -->
+    <div id="main-app" class="full-viewport hidden">
+        
+        <!-- Connection Status Bar -->
+        <header id="status-bar" class="flex items-center justify-between px-4 py-2 bg-gray-800 pt-safe-top">
+            <div class="flex items-center space-x-3">
+                <h1 class="text-lg font-bold text-white">Web SSH</h1>
+                <div id="connection-status" class="flex items-center">
+                    <div class="w-2 h-2 rounded-full bg-red-500 mr-2 status-indicator"></div>
+                    <span class="text-sm text-gray-300">Disconnected</span>
+                </div>
+            </div>
+            
+            <!-- Mobile Menu Button -->
+            <button id="menu-button" class="p-2 rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                </svg>
+            </button>
+        </header>
+
+        <!-- Terminal Container -->
+        <!-- ==========================================
+             WEBSOCKET AUTHENTICATION
+             ==========================================
+             Direct WebSocket connection established in JavaScript (see app.js)
+             
+             WEBSOCKET URL FORMAT:
+             ws://localhost:8080/ws?api_key=your-key-here
+             ========================================== -->
+        <main class="flex-1 relative overflow-hidden">
+            <!-- Terminal will be mounted here -->
+            <div id="terminal-container" 
+                 class="w-full h-full bg-terminal-bg terminal-container focus:outline-none"
+                 tabindex="0">
+            </div>
+            
+            <!-- Hidden input for mobile keyboard -->
+            <input 
+                type="text" 
+                id="mobile-input"
+                class="absolute left-[-9999px] opacity-0"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck="false"
+                aria-hidden="true">
+        </main>
+
+        <!-- Footer/Status Info (only visible in landscape on larger screens) -->
+        <footer class="hidden sm:flex items-center justify-between px-4 py-1 bg-gray-800 text-xs text-gray-400 pb-safe-bottom">
+            <span>Web SSH Client v1.0</span>
+            <span id="terminal-info">Ready to connect</span>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-gray-800 rounded-lg p-6 flex items-center space-x-4">
+            <svg class="animate-spin h-6 w-6 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span class="text-white">Connecting...</span>
+        </div>
+    </div>
+
+    <!-- JavaScript Application -->
+    <script>
+        // Check for critical dependencies before loading application
+        window.addEventListener('load', function() {
+            const missing = [];
+            
+            if (typeof htmx === 'undefined') missing.push('HTMX');
+            if (typeof Terminal === 'undefined') missing.push('xterm.js');
+            if (typeof FitAddon === 'undefined') missing.push('xterm-addon-fit');
+            
+            if (missing.length > 0) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'fixed inset-0 bg-red-900 flex items-center justify-center z-50';
+                errorDiv.innerHTML = `
+                    <div class="bg-red-800 p-6 rounded-lg text-white text-center max-w-md">
+                        <h2 class="text-xl font-bold mb-4">⚠️ Loading Error</h2>
+                        <p class="mb-4">Failed to load required libraries:</p>
+                        <ul class="mb-4 text-left">
+                            ${missing.map(lib => `<li>• ${lib}</li>`).join('')}
+                        </ul>
+                        <button onclick="location.reload()" 
+                                class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
+                            Retry
+                        </button>
+                    </div>
+                `;
+                document.body.appendChild(errorDiv);
+                console.error('❌ Critical libraries failed to load:', missing);
+                return;
+            }
+            
+            console.log('✅ All libraries loaded successfully');
+        });
+    </script>
+    <script src="js/config.js"></script>
+    <script src="js/terminal.js"></script>
+    <script src="js/mobile.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

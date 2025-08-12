@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: web-ssh-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - WEB_SSH_PORT=3000
+      - WEB_SSH_FRONTEND_DIR=/app/frontend
+      - WEB_SSH_READ_TIMEOUT=30s
+      - WEB_SSH_WRITE_TIMEOUT=30s
+      - WEB_SSH_MAX_CONNECTIONS=100
+      - WEB_SSH_READ_BUFFER_SIZE=1024
+      - WEB_SSH_WRITE_BUFFER_SIZE=1024
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ../frontend:/app/frontend:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - web-ssh-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: web-ssh-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - web-ssh-network
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  web-ssh-network:
+    driver: bridge
