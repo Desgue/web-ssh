@@ -25,7 +25,7 @@ func New(cfg config.Server) *Server {
 		cfg.SetDefaults()
 	}
 
-	handlerDeps := new(handler.HandlerDeps)
+	handlerDeps := new(handler.Connection)
 
 	mux := newMux(cfg, handlerDeps)
 
@@ -46,7 +46,7 @@ func New(cfg config.Server) *Server {
 	}
 }
 
-func newMux(cfg config.Server, handlerDeps *handler.HandlerDeps) *http.ServeMux {
+func newMux(cfg config.Server, handlerDeps *handler.Connection) *http.ServeMux {
 	mux := http.NewServeMux()
 	fs := http.FileServer(http.Dir(cfg.FrontendDir.String()))
 	mux.Handle("/", fs)

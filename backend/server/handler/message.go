@@ -9,12 +9,13 @@ import (
 type MessageType string
 
 const (
-	MessageTypeTerminalInput   MessageType = "terminal_input"
-	MessageTypeTerminalOutput  MessageType = "terminal_output"
-	MessageTypeTerminalError   MessageType = "terminal_error"
-	MessageTypeSystemMessage   MessageType = "system_message"
-	MessageTypeConnectionState MessageType = "connection_state"
-	MessageTypeRequestPrompt   MessageType = "request_prompt"
+	MessageTypeTerminalInput     MessageType = "terminal_input"
+	MessageTypeTerminalOutput    MessageType = "terminal_output"
+	MessageTypeTerminalError     MessageType = "terminal_error"
+	MessageTypeSystemMessage     MessageType = "system_message"
+	MessageTypeConnectionState   MessageType = "connection_state"
+	MessageTypeRequestPrompt     MessageType = "request_prompt"
+	MessageTypeConnectionRequest MessageType = "connection_request"
 )
 
 type Message struct {
@@ -22,18 +23,19 @@ type Message struct {
 	Data      string      `json:"data"`
 	Timestamp time.Time   `json:"timestamp"`
 	// Optional metadata for enhanced terminal handling
-	Metadata  *MessageMetadata `json:"metadata,omitempty"`
+	Metadata *MessageMetadata `json:"metadata,omitempty"`
 }
 
 type MessageMetadata struct {
 	// For terminal output
-	HasAnsi     bool   `json:"has_ansi,omitempty"`     // Whether data contains ANSI escape codes
-	ExitCode    *int   `json:"exit_code,omitempty"`    // Command exit code (for terminal_output)
-	Command     string `json:"command,omitempty"`      // Original command (for reference)
-	
+	HasAnsi  bool   `json:"has_ansi,omitempty"`  // Whether data contains ANSI escape codes
+	ExitCode *int   `json:"exit_code,omitempty"` // Command exit code (for terminal_output)
+	Command  string `json:"command,omitempty"`   // Original command (for reference)
+
 	// For SSH connection
 	SSHHost     string `json:"ssh_host,omitempty"`     // SSH server hostname
 	SSHUser     string `json:"ssh_user,omitempty"`     // SSH username
+	SSHPassword string `json:"ssh_password,omitempty"` // SSH password (not recommended for production)
 	SessionID   string `json:"session_id,omitempty"`   // Unique session identifier
 }
 
@@ -70,31 +72,31 @@ func NewTerminalError(errorMsg string) *Message {
 // NewTerminalOutput creates a terminal output message with ANSI detection
 func NewTerminalOutput(output string, command string, exitCode *int) *Message {
 	msg := NewMessage(MessageTypeTerminalOutput, output)
-	
+
 	// Detect ANSI escape codes
 	hasAnsi := containsAnsiCodes(output)
-	
+
 	msg.Metadata = &MessageMetadata{
 		HasAnsi:  hasAnsi,
 		Command:  command,
 		ExitCode: exitCode,
 	}
-	
+
 	return msg
 }
 
 // NewSSHTerminalOutput creates a terminal output message for SSH commands
 func NewSSHTerminalOutput(output string, command string, exitCode *int, sshHost string, sshUser string, sessionID string) *Message {
 	msg := NewTerminalOutput(output, command, exitCode)
-	
+
 	if msg.Metadata == nil {
 		msg.Metadata = &MessageMetadata{}
 	}
-	
+
 	msg.Metadata.SSHHost = sshHost
 	msg.Metadata.SSHUser = sshUser
 	msg.Metadata.SessionID = sessionID
-	
+
 	return msg
 }
 
