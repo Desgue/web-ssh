@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   backend:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     container_name: web-ssh-backend
     ports:
@@ -17,9 +15,9 @@ services:
       - WEB_SSH_READ_BUFFER_SIZE=1024
       - WEB_SSH_WRITE_BUFFER_SIZE=1024
       - REDIS_URL=redis://redis:6379/0
-    volumes:
-      - ../frontend:/app/frontend:ro
     depends_on:
+      ssh-test-server:
+        condition: service_healthy
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -43,9 +41,36 @@ services:
     restart: unless-stopped
     networks:
       - web-ssh-network
+  
+  ssh-test-server:
+    image: linuxserver/openssh-server:latest
+    container_name: web-ssh-test-server
+    healthcheck:
+      test: ["CMD", "echo", "Hello World"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    ports:
+      - "2222:2222" # host:container SSH port
+    environment:
+      - PUID=1000               # Map to your host UID
+      - PGID=1000               # Map to your host GID
+      - TZ=UTC                  # Timezone
+      - USER_NAME=test # SSH user name
+      - PASSWORD=test # Password for SSH user
+      # - PUBLIC_KEY_FILE=/config/ssh_host_keys/id_rsa.pub # Optional for key auth
+      # - PRIVATE_KEY_FILE=/config/ssh_host_keys/id_rsa # Optional for key auth
+    volumes:
+      - ssh_config:/config
+    restart: unless-stopped
+    networks:
+      - web-ssh-network
 
 volumes:
   redis_data:
+    driver: local
+  ssh_config:
     driver: local
 
 networks:
